@@ -30,32 +30,37 @@ class LightningModel(L.LightningModule):
         super().__init__()
         self.train_acc = torchmetrics.Accuracy(task='multiclass',num_classes=10)
         self.val_acc = torchmetrics.Accuracy(task='multiclass',num_classes=10)
+        self.test_acc = torchmetrics.Accuracy(task='multiclass',num_classes=10)
         self.model = model
         self.lr = lr
     def forward(self,x):
         return self.model(x)
-    def training_step(self,batch,batch_idx):
+    def shared_step(self,batch):
         images,labels = batch
         logits = self(images)
         loss=F.cross_entropy(logits,labels)
         preds = logits.argmax(dim=1)
+        return labels,loss,preds
+    def training_step(self,batch,batch_idx):
+        labels,loss,preds = self.shared_step(batch)
         self.train_acc(preds,labels)
-        self.log('train_acc',self.train_acc,prog_bar=True)
+        self.log('train_acc',self.train_acc,prog_bar=True,on_step=False,on_epoch=True)
         self.log('training_loss',loss,prog_bar=True,on_step=False,on_epoch=True)
         return loss
     def validation_step(self,batch,batch_idx):
-        images,labels = batch
-        logits = self(images)
-        loss = F.cross_entropy(logits,labels)
-        preds = logits.argmax(dim=1)
+        labels,loss,preds = self.shared_step(batch)
         self.val_acc(preds,labels)
         self.log('validation_loss',loss,prog_bar=True)
         self.log('validation_acc',self.val_acc,prog_bar=True,on_step=False,on_epoch=True)
+    def test_step(self,batch,batch_idx):
+        labels,_,preds = self.shared_step(batch)
+        self.test_acc(preds,labels)
+        self.log('accuracy',self.test_acc)
     def configure_optimizers(self):
         opt = torch.optim.AdamW(self.parameters(),lr=self.lr)
         return opt
     
-# instantiate the models and define the trainer
+
 if __name__=='__main__':
     # load datasets
 
@@ -69,7 +74,7 @@ if __name__=='__main__':
         train_ds,
         shuffle=True,
         num_workers=4,
-        batch_size=64,
+        batch_size=128,
         drop_last=True,
         persistent_workers=True
     )
@@ -77,7 +82,7 @@ if __name__=='__main__':
     val_loader = DataLoader(
         val_ds,
         shuffle=False,
-        batch_size=64,
+        batch_size=128,
         num_workers=4,
         persistent_workers=True,
     )
@@ -85,8 +90,10 @@ if __name__=='__main__':
     test_loader = DataLoader(
         test_ds,
         shuffle=False,
-        batch_size=64
+        batch_size=128
     )
+
+    # instantiate the models and define the trainer and begin training
 
     model = MNISTClassifier()
     lightning_model = LightningModel(model=model,lr=1e-3)
@@ -102,6 +109,16 @@ if __name__=='__main__':
         train_dataloaders=train_loader,
         val_dataloaders=val_loader,
     )
+
+    # Testing the model
+
+    train_acc = trainer.test(dataloaders=train_loader)[0]['accuracy']
+    val_acc = trainer.test(dataloaders=val_loader)[0]['accuracy']
+    test_acc = trainer.test(dataloaders=test_loader)[0]['accuracy']
+
+    print(f"Training Accuracy : {train_acc} | Validation Accuracy : {val_acc} | Testing Accuracy : {test_acc}")
+
+    # save the model
 
     MODEL_PATH = 'mnist-lightning.pt'
     torch.save(lightning_model.state_dict(),MODEL_PATH)
