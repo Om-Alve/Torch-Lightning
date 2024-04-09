@@ -28,13 +28,15 @@ class MNISTClassifier(nn.Module):
 # define lightning model 
 
 class LightningModel(L.LightningModule):
-    def __init__(self,model,lr):
+    def __init__(self,model,lr,t_max):
         super().__init__()
         self.train_acc = torchmetrics.Accuracy(task='multiclass',num_classes=10)
         self.val_acc = torchmetrics.Accuracy(task='multiclass',num_classes=10)
         self.test_acc = torchmetrics.Accuracy(task='multiclass',num_classes=10)
         self.model = model
         self.lr = lr
+        self.t_max = t_max
+        self.save_hyperparameters(ignore=['model'])
     def forward(self,x):
         return self.model(x)
     def shared_step(self,batch):
@@ -60,7 +62,16 @@ class LightningModel(L.LightningModule):
         self.log('test_acc',self.test_acc)
     def configure_optimizers(self):
         opt = torch.optim.AdamW(self.parameters(),lr=self.lr)
-        return opt
+        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer=opt,T_max=self.t_max)
+        return {
+            'optimizer':opt,
+            'lr_schduler':{
+                "scheduler":scheduler,
+                "monitor":"training_loss",
+                "interval":"step",
+                "frequency":1,
+            }
+        }
     
 class MNISTDataModule(L.LightningDataModule):
     def __init__(self,data_dir='./mnist',batch_size=64):
