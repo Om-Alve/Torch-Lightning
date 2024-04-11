@@ -8,6 +8,7 @@ import torchmetrics
 import lightning as L
 from utilities import MNISTClassifier,LightningModel,MNISTDataModule
 from lightning.pytorch.callbacks import ModelCheckpoint
+import time
 
 if __name__=='__main__':
     
@@ -15,7 +16,7 @@ if __name__=='__main__':
 
     # Instantiate the Lightning DataModule
 
-    dm = MNISTDataModule()
+    dm = MNISTDataModule(batch_size=256)
     dm.setup(stage='fit')
     total_steps = len(dm.train_dataloader()) * numepochs
 
@@ -29,13 +30,16 @@ if __name__=='__main__':
         devices=1,
         max_epochs=numepochs,
         callbacks=[callback],
+        precision='16-mixed'
     )
-
+    start = time.time()
     trainer.fit(
         model=lightning_model,
         datamodule=dm,
     )
+    end = time.time()
 
+    print(f"Training Time : {(end - start)/60:.3f} minutes")
     # Testing the model
 
     train_acc = trainer.validate(dataloaders=dm.train_dataloader(),ckpt_path='best')[0]['val_acc']
